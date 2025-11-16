@@ -1,0 +1,156 @@
+Question 1: Total Sales Revenue by Product
+Query :
+	Select prod.id, prod.name, COALESCE(SUM(oi.quantity * oi.price), 0) as total_revenue
+	From products prod 
+	Left Join order_items oi on prod.id = oi.product_id
+	Group By prod.id, prod.name
+	Order By total_revenue desc;
+	
+	
+Question 2: Top Customers by Spending	
+Query :
+	Select c.id, c.name, SUM(oi.quantity * oi.price)as total_spending
+	From customers c
+	Join orders ord on ord.customer_id=c.id
+	Join order_items oi on oi.order_id = ord.id
+	Group By c.id, c.name
+	Order By total_spending desc
+	Limit 5;
+	
+	
+Question 3: Average Order Value per Customer
+Query:
+	With order_totals as (
+	Select ord.id, ord.customer_id, SUM(oi.quantity * oi.price) as order_total
+	From orders ord
+	Join order_items oi on oi.order_id = ord.id	
+	Group By ord.id, ord.customer_id
+	)
+	Select c.id, c.name, ROUND(AVG(ot.order_total),2) as average_order_value
+	From customers c
+	Join order_totals ot on ot.customer_id= c.id
+	Group By c.id, c.name
+	Order By average_order_value desc;
+		
+		
+Question 4: Recent Orders
+Query:
+	Select ord.id as order_id, c.name as customer_name, ord.order_date, ord.status
+	From orders ord
+	Join customers c on ord.customer_id = c.id
+	where ord.order_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+	Order By ord.order_date desc;	
+		
+Question 5: Running Total of Customer Spending
+Query:
+	With order_totals as (
+	Select ord.customer_id, ord.id as order_id, ord.order_date, SUM(oi.quantity * oi.price) as order_total 
+	From orders ord
+	Join order_items oi on oi.order_id = ord.id	
+	Group By ord.customer_id, ord.id, ord.order_date
+	)
+	Select customer_id, order_id, order_date, order_total, 
+	SUM(order_total) OVER(
+	PARTITION BY customer_id 
+	Order By order_date, order_id
+	ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+	) as running_total
+	From order_totals
+	Order By customer_id, order_date;		
+		
+		
+		
+Question 6: Product Review Summary
+Query: 
+	Select p.id as product_id , p.name as product_name, ROUND(AVG(r.rating),2) as average_review_rating, Count(r.id) as total_reviews
+	From products p
+	Left Join reviews r on r.product_id = p.id
+	Group By p.id, p.name
+	Order By average_review_rating desc,
+	total_reviews desc;
+
+Question 7: Customers Without Orders	
+Query: 	
+	Select c.id, c.name 
+	From customers c 
+	where NOT EXISTS(Select 1 from orders ord where ord.customer_id = c.id);
+		
+Question 8: Update Last Purchased Date
+Query:
+	UPDATE products p 
+	Join (
+		Select oi.product_id, Max(ord.order_date) as last_order_date
+		From order_items oi 
+		Join orders ord on ord.id = oi.order_id
+		Group By oi.product_id
+	) as sub on p.id = sub.product_id 
+	SET p.last_purchased = sub.last_order_date;
+	
+	
+Question 9: Transaction Scenario
+Query:
+		START TRANSACTION;
+
+		SET @customer_id = 1;
+		SET @product_id = 2;
+		SET @order_quantity = 4;
+		SET @order_date = NOW();
+		SET @order_status = 'pending';
+
+		UPDATE products
+		SET stock = stock - @order_quantity,
+			last_purchased = @order_date
+		WHERE id = @product_id
+		  AND stock >= @order_quantity;
+		  
+		SELECT ROW_COUNT() AS rows_affected;
+
+		INSERT INTO orders (customer_id, order_date, status)
+		VALUES (@customer_id, @order_date, @order_status);
+
+		SET @order_id = LAST_INSERT_ID();
+
+		INSERT INTO order_items (order_id, product_id, quantity, price)
+		SELECT @order_id, id, @order_quantity, price
+		FROM products
+		WHERE id = @product_id;
+
+		COMMIT;
+
+Question 10: Query Optimization and Indexing (Short Answer)
+Query:	
+	Explain Select c.id, c.name, SUM(oi.quantity * oi.price)as total_spending
+	From customers c
+	Join orders ord on ord.customer_id=c.id
+	Join order_items oi on oi.order_id = ord.id
+	Group By c.id, c.name
+	Order By total_spending desc
+	Limit 5;
+
+	-> Explain Output
+	type: Should ideally be ref or const for fast index lookups; avoid ALL (full table scan).
+	key: Shows which index (if any) is being used.
+	rows: Estimate of rows scanned; lower is better.
+	Extra: Look for Using temporary or Using filesort – these indicate potential performance issues for GROUP BY / ORDER BY
+
+	-> Suggested Indexing
+	Index on customer_id to speed up the join with customers. 
+	CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+	
+	Index on order_id to speed up the join with orders.
+	CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+	
+	
+	
+Question 11: Query Optimization Challenge
+Query:
+	Select c.id AS customer_id, c.name, SUM(oi.quantity * oi.price) AS total_spent
+	From customers c
+	Join orders ord ON c.id = ord.customer_id
+	Join order_items oi ON ord.id = oi.order_id
+	Group By c.id, c.name
+	Order By total_spent desc;
+
+		
+		
+			
